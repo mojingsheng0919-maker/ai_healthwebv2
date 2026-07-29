@@ -47,7 +47,7 @@ const handleCommand = (command) => {//处理下拉菜单命令
       localStorage.removeItem('token')
       localStorage.removeItem('userInfo')
       // 跳转到登录页
-      router.push('/auth/login')
+      router.push('/login')
     })
   }).catch(() => {
     // 用户点击取消，无需额外处理

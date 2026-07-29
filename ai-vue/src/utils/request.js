@@ -42,7 +42,7 @@ service.interceptors.response.use(
           ElMessage.error(data.msg || "登录过期，请重新登录")
           localStorage.removeItem('token') // 清除token
           localStorage.removeItem('userInfo') // 清除用户信息
-          window.location.href = '/auth/login' // 跳转到登录页
+          window.location.href = '/login' // 跳转到登录页
         }else{
           // 本来就在登录页，只弹提示就行，不用再跳转了
           ElMessage.error(data.msg || "登录过期，请重新登录")

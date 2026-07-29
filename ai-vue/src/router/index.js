@@ -1,6 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'     
 import BackendLayout from '@/components/BackendLayout.vue'
-import AuthLayout from '@/components/AuthLayout.vue'
 import FrontendLayout from '@/components/frontendLayout.vue'
 
 // 路由配置
@@ -40,27 +39,31 @@ const backendLayoutRoutes = [
             },
 
         ]
+    }
+]
+
+const authLayoutRoutes = [
+    {
+        path: '/login',
+        component: () => import('@/views/Login.vue'),
+        meta: {
+            title: 'Login'
+        }
     },
-    {//auth布局
-        path: '/auth',
-        component: AuthLayout,
-        children: [
-            {//登录界面
-                path: 'login',
-                component: () => import('@/views/Login.vue'),
-                meta: {
-                    title: 'Login'
-                }
-            }
-            ,
-            {//注册界面
-                path: 'register',
-                component: () => import('@/views/Register.vue'),
-                meta: {
-                    title: 'Register'
-                }
-            }
-        ]
+    {
+        path: '/register',
+        component: () => import('@/views/Register.vue'),
+        meta: {
+            title: 'Register'
+        }
+    }
+    ,
+    {
+        path: '/Consultation',
+        component: () => import('@/views/Consultation.vue'),
+        meta: {
+            title: 'Consultation'
+        }
     }
 ]
 
@@ -73,11 +76,6 @@ const frontendLayoutRoutes = [
                 path: '/',
                 component: () => import('@/views/Home.vue')
             }
-            ,
-            {
-                path: 'consultation',
-                component: () => import('@/views/Consultation.vue')
-            }
         ]
     }
 ]
@@ -89,7 +87,7 @@ const frontendLayoutRoutes = [
 
 const router = createRouter({
     history: createWebHistory(),
-    routes: [...backendLayoutRoutes, ...frontendLayoutRoutes]
+    routes: [...backendLayoutRoutes, ...authLayoutRoutes, ...frontendLayoutRoutes]
 })
 
 // 路由前置守卫
@@ -107,7 +105,7 @@ router.beforeEach((to, from, next) => {
       }
     }else if(userInfo.userType == 1){
         //只能访问前端布局
-        if (to.path.startsWith('/auth') || to.path.startsWith('/back')) {
+        if (to.path.startsWith('/back') || to.path.startsWith('/login') || to.path.startsWith('/register')) {
           next('/')
         } else {
           next()
@@ -115,7 +113,7 @@ router.beforeEach((to, from, next) => {
     }
   } else {
     if (to.path.startsWith('/back')) {
-      next('/auth/login')
+      next('/login')
     } else {
       next()
     }
