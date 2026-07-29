@@ -1,12 +1,12 @@
 <template>
   <div>
     <!-- 页面头部区域，里面放标题和右上角按钮 -->
-    <Pagehead style="margin-bottom: 25px;">
+    <PageHead style="margin-bottom: 25px;">
       <template #buttons>
         <!-- 传一个空对象进去，表示不是编辑旧文章，而是新增文章 -->
         <el-button type="primary" @click="handleEdit({})">Edit</el-button>
       </template>
-    </Pagehead>
+    </PageHead>
     <!-- 搜索表单组件：把表单配置传进去，点搜索时会触发 handleSearch -->
     <TableSearch :formItem="formItem" @search="handleSearch" />
     <!-- 文章列表表格：tableData 里放什么，这里就显示什么 -->
@@ -63,7 +63,7 @@
 </template>
 <script setup>
 import { onMounted , ref, reactive } from 'vue' // onMounted：页面加载完执行；ref/reactive：做响应式数据
-import Pagehead from '@/components/Pagehead.vue' // 页面头部组件
+import PageHead from '@/components/PageHead.vue' // 页面头部组件
 import TableSearch from '@/components/TableSearch.vue' // 通用搜索组件
 import { categoryTree , articleList ,getArticleDetail ,deleteArticle ,changeArticleStatus } from '@/api/admin' // 文章相关接口
 import ArticleDialog from '@/components/ArticleDialog.vue' // 新增/编辑文章弹窗
