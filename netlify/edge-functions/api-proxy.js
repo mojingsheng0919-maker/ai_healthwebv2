@@ -1,19 +1,7 @@
+const API_ORIGIN = 'http://159.75.169.224:1235'
+
 export default async function(request, context) {
   const url = new URL(request.url)
-
-  // 诊断模式：加 ?debug=1 查看请求信息
-  if (url.searchParams.has('debug')) {
-    return new Response(JSON.stringify({
-      method: request.method,
-      path: url.pathname + url.search,
-      target: 'http://159.75.169.224:1235' + url.pathname + url.search
-    }), {
-      status: 200,
-      headers: { 'content-type': 'application/json' }
-    })
-  }
-
-  const API_ORIGIN = 'http://159.75.169.224:1235'
   const path = url.pathname + url.search
 
   const reqHeaders = new Headers(request.headers)
@@ -35,22 +23,42 @@ export default async function(request, context) {
     const ct = backendRes.headers.get('content-type') || ''
     const isStream = ct.includes('text/event-stream')
 
-    const resHeaders = new Headers()
-    if (isStream) {
-      resHeaders.set('content-type', 'text/event-stream')
-      resHeaders.set('cache-control', 'no-cache')
-      resHeaders.set('x-accel-buffering', 'no')
-    } else {
+    if (!isStream || !backendRes.body) {
+      // 非流式：正常返回
+      const resHeaders = new Headers()
       for (const [key, value] of backendRes.headers) {
         const lower = key.toLowerCase()
         if (lower === 'transfer-encoding' || lower === 'connection' || lower === 'keep-alive') continue
         resHeaders.set(key, value)
       }
+      const body = await backendRes.text()
+      return new Response(body, { status: backendRes.status, headers: resHeaders })
     }
 
-    return new Response(backendRes.body, {
-      status: backendRes.status,
-      headers: resHeaders
+    // 流式 SSE：手动逐块转发，避免 HTTP/1.1 chunked 和 HTTP/2 冲突
+    const reader = backendRes.body.getReader()
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) { controller.close(); return }
+            controller.enqueue(value)
+          }
+        } catch (e) {
+          controller.error(e)
+        }
+      },
+      cancel() { reader.cancel() }
+    })
+
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        'x-accel-buffering': 'no'
+      }
     })
   } catch (err) {
     return new Response(JSON.stringify({ error: 'Proxy error', message: err.message }), {
