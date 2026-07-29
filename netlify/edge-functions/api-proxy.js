@@ -1,7 +1,19 @@
-const API_ORIGIN = 'http://159.75.169.224:1235'
-
 export default async function(request, context) {
   const url = new URL(request.url)
+
+  // 诊断模式：加 ?debug=1 查看请求信息
+  if (url.searchParams.has('debug')) {
+    return new Response(JSON.stringify({
+      method: request.method,
+      path: url.pathname + url.search,
+      target: 'http://159.75.169.224:1235' + url.pathname + url.search
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' }
+    })
+  }
+
+  const API_ORIGIN = 'http://159.75.169.224:1235'
   const path = url.pathname + url.search
 
   const reqHeaders = new Headers(request.headers)
@@ -24,7 +36,6 @@ export default async function(request, context) {
     const isStream = ct.includes('text/event-stream')
 
     const resHeaders = new Headers()
-
     if (isStream) {
       resHeaders.set('content-type', 'text/event-stream')
       resHeaders.set('cache-control', 'no-cache')
