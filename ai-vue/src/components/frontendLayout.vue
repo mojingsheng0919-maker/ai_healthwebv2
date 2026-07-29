@@ -9,9 +9,9 @@
           <router-link class="home-nav__link" exact-active-class="home-nav__link--active" to="/">
             Home
           </router-link>
-          <a class="home-nav__link" :class="{ 'home-nav__link--active': $route.path === '/consultation' }" @click.prevent="goConsultation" >
-            <a href="#">Consultation</a>
-          </a>
+          <button class="home-nav__link home-nav__link-button" :class="{ 'home-nav__link--active': $route.path === '/consultation' }" type="button" @click="goConsultation">
+            Consultation
+          </button>
         </div>
 
         <div class="home-nav__actions">
@@ -181,6 +181,13 @@ const handleLogout = () => {
       color: var(--color-text);
       font-weight: 700;
     }
+  }
+
+  &__link-button {
+    border: none;
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
   }
 
   &__actions {

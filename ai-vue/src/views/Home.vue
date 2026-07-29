@@ -24,14 +24,14 @@
             </p>
 
             <!-- 大白话：Hero 里的主行动按钮，没登录先去登录页 -->
-            <a class="hero-section__action animate-fade-slide-up" style="animation-delay: 0.4s;" @click.prevent="goConsultation">
-              <button class="hero-section__button btn-ink-pop btn-pulse btn-sparkle">
+            <div class="hero-section__action animate-fade-slide-up" style="animation-delay: 0.4s;">
+              <button class="hero-section__button btn-ink-pop btn-pulse btn-sparkle" type="button" @click="goConsultation">
                 Start Journey
                 <span class="material-symbols-outlined hero-section__button-icon">
                     arrow_forward
                 </span>
               </button>
-            </a>
+            </div>
           </div>
 
           <!-- 大白话：Hero 右半边是展示图，目前用的是背景图写法 -->
