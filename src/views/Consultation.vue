@@ -86,9 +86,8 @@
 import { ref , watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 
-// ==================== DeepSeek API 配置 ====================
-const DEEPSEEK_KEY = import.meta.env.VITE_DEEPSEEK_KEY || ''
-const DEEPSEEK_URL = 'https://api.deepseek.com/v1/chat/completions'
+// ==================== AI 配置：Cloudflare Workers AI（免费） ====================
+const AI_CHAT_URL = '/api/ai-chat'
 const SYSTEM_PROMPT = '你是一个温暖、专业的心理咨询AI助手，名叫 Kokoro。请用温柔、共情的语气回复，帮助用户梳理情绪、缓解压力。回复简洁有洞察力，控制在 200 字以内。像朋友一样聊天，但保持专业边界。'
 
 
@@ -277,21 +276,9 @@ const sendMessage = () => {
   startAiResponse(message)
 }
 
-// ==================== AI 回复：DeepSeek API 直连 ====================
+// ==================== AI 回复：Cloudflare Workers AI（免费） ====================
 const startAiResponse = async (userMessage) => {
   if (isAiTyping.value) return
-  if (!DEEPSEEK_KEY) {
-    const aiMessage = {
-      id: `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      senderType: 2,
-      content: 'AI 配置缺失，请设置 VITE_DEEPSEEK_KEY 后再试。',
-      isError: true,
-      createAt: new Date().toISOString()
-    }
-    messages.value.push(aiMessage)
-    saveLocalCache()
-    return
-  }
   isAiTyping.value = true
 
   const aiMessage = {
@@ -302,39 +289,33 @@ const startAiResponse = async (userMessage) => {
   }
   messages.value.push(aiMessage)
 
-  // 拼消息上下文：把现有历史转成 DeepSeek 的 messages 格式
-  const deepseekMsgs = [{ role: 'system', content: SYSTEM_PROMPT }]
+  // 拼消息上下文
+  const chatMessages = [{ role: 'system', content: SYSTEM_PROMPT }]
   const historyMsgs = messages.value.slice(0, -1)
   historyMsgs.forEach(m => {
-    deepseekMsgs.push({
+    chatMessages.push({
       role: m.senderType === 1 ? 'user' : 'assistant',
       content: m.content
     })
   })
 
   try {
-    const response = await fetch(DEEPSEEK_URL, {
+    const response = await fetch(AI_CHAT_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + DEEPSEEK_KEY
-      },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages: deepseekMsgs,
-        stream: false
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: chatMessages })
     })
 
-    if (!response.ok) throw new Error('DeepSeek ' + response.status)
+    if (!response.ok) throw new Error('AI 返回 ' + response.status)
 
     const data = await response.json()
-    if (data && data.choices && data.choices.length && data.choices[0].message) {
-      aiMessage.content = data.choices[0].message.content
+    if (data && data.content) {
+      aiMessage.content = data.content
+    } else if (data && data.error) {
+      aiMessage.content = 'AI 出错：' + data.error
     } else {
       aiMessage.content = '抱歉，未获取到回复。'
     }
-    // 大白话：AI 真正回复完要立刻再存一次，不然 localStorage 里可能还留着空白占位消息。
     saveLocalCache()
     isAiTyping.value = false
   } catch (err) {
