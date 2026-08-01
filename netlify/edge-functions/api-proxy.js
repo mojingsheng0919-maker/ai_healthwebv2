@@ -1,27 +1,19 @@
 const API_ORIGIN = 'http://159.75.169.224:1235'
 
-// 大白话：Cloudflare Workers AI 免费模型
-const CF_AI_URL = (accountId) =>
-  `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/meta/llama-3.1-8b-instruct`
-
 export default async function(request, context) {
   const url = new URL(request.url)
   const pathname = url.pathname
 
-  // ===== 大白话：AI 聊天走 Cloudflare Workers AI 免费接口 =====
+  // ===== 大白话：AI 聊天走 Cloudflare Workers AI 免费接口，key 从 Netlify 环境变量取 =====
   if (pathname === '/api/ai-chat' && request.method === 'POST') {
     try {
       const { messages } = await request.json()
       const accountId = Deno.env.get('CF_ACCOUNT_ID')
       const apiToken = Deno.env.get('CF_API_TOKEN')
 
-      if (!accountId || !apiToken) {
-        return new Response(JSON.stringify({ content: 'AI 服务未配置，请设置 CF_ACCOUNT_ID 和 CF_API_TOKEN 环境变量。' }), {
-          status: 200, headers: { 'Content-Type': 'application/json' }
-        })
-      }
+      const cfAiUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/meta/llama-3.1-8b-instruct`
 
-      const cfRes = await fetch(CF_AI_URL(accountId), {
+      const cfRes = await fetch(cfAiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
