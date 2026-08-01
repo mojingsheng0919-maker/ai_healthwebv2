@@ -38,11 +38,12 @@ service.interceptors.response.use(
       if (data.code === "-1") {
         // code=-1表示登录过期了，需要判断当前是不是在登录页面
         if (!config.url?.includes("/login")) {
-          // 当前不在登录页 → 弹出提示，清空登录信息，强制跳转到登录页
+          // 当前不在登录页 → 弹出提示，清空登录信息，跳转到登录页
           ElMessage.error(data.msg || "登录过期，请重新登录")
           localStorage.removeItem('token') // 清除token
           localStorage.removeItem('userInfo') // 清除用户信息
-          window.location.href = '/login' // 跳转到登录页
+          router.push('/login') // 用路由跳转代替硬刷新，体验更好
+          return Promise.reject('登录过期') // 必须 reject，不然后续 .then 还会拿到 response 继续执行
         }else{
           // 本来就在登录页，只弹提示就行，不用再跳转了
           ElMessage.error(data.msg || "登录过期，请重新登录")

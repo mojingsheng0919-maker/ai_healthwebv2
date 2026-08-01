@@ -1,8 +1,0 @@
-{
-  "name": "ai-mental-proxy",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "start": "node index.js"
-  }
-}

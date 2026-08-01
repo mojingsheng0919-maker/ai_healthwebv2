@@ -3,52 +3,7 @@
     <!-- 大白话：这个 canvas 和首页一样，专门负责整页漂浮的小墨点背景 -->
     <canvas id="consultation-ink-canvas" class="consultation-page__ink-canvas"></canvas>
 
-    <aside class="consultation-sidebar">
-      <div class="consultation-sidebar__top">
-        <div class="consultation-brand">
-          <div class="consultation-brand__badge">
-            <img src="../assets/images/kokoro.png" alt="AI助手" class="consultation-brand__image" />
-          </div>
-          <h1 class="consultation-brand__title">Kokoro-kun</h1>
-          <p class="consultation-brand__subtitle">Online &amp; Listening</p>
-        </div>
-
-        <section v-if="Array.isArray(sessionList) && sessionList.length" class="consultation-history">
-          <h2 class="consultation-history__title">Recent Sessions</h2>
-          <div class="consultation-history__list">
-            <button
-              v-for="session in sessionList || []"
-              :key="session.id"
-              type="button"
-              class="consultation-history__item"
-              @click="handleSessionClick(session)"
-            >
-              <span class="consultation-history__name">{{ session.sessionTitle }}</span>
-              <span class="consultation-history__meta">
-                <span class="consultation-history__meta-item">
-                  <el-icon><ChatRound /></el-icon>
-                  {{ session.messageCount || 0 }}
-                </span>
-                <span class="consultation-history__meta-item">
-                  <el-icon><Clock /></el-icon>
-                  {{ session.durationMinutes || 0 }}
-                </span>
-              </span>
-              <span class="consultation-history__delete" @click.stop="handleDeleteSession(session.id)">
-                <el-icon><DeleteFilled /></el-icon>
-              </span>
-            </button>
-          </div>
-        </section>
-      </div>
-
-      <button class="consultation-sidebar__button" type="button" @click="createNewFrontendSession">
-        <el-icon><Plus /></el-icon>
-        <span>New Session</span>
-      </button>
-    </aside>
-
-    <main class="consultation-main">
+    <main class="consultation-main consultation-main--full">
       <div class="consultation-main__art" aria-hidden="true">
         <div class="consultation-main__art-image"></div>
       </div>
@@ -128,61 +83,30 @@
 <script setup>
 // ==================== 导入依赖 ====================
 // vue 核心：ref 响应式变量、onMounted 页面加载完执行、onBeforeUnmount 页面销毁前清理、nextTick 等页面更新完再操作 DOM
-import { ref , onMounted, onBeforeUnmount, nextTick } from 'vue'
-// 从接口文件里拿会话相关的方法
-import { StartSession , getSessionList , deleteSession , getSessionDetail , getSessionEmotion } from '@/api/frontend'
-// Element Plus 消息提示
-import { ElMessage } from 'element-plus'
-// Markdown 渲染组件，把 AI 回复的 markdown 文字转成带格式的样子
+import { ref , watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
-// fetchEventSource：用 SS E 流式的方式读取 AI 回复（一句话一句话往外蹦）
-import { fetchEventSource } from '@microsoft/fetch-event-source'
 
-// ==================== 三张图标图片的路径 ====================
-// robot-fill.png：AI 助手的头像
-const iconUrl = new URL('@/assets/images/robot-fill.png', import.meta.url).href// 图标路径
-// like.png：顶部的点赞图标
-const iconUrl1 = new URL('@/assets/images/like.png', import.meta.url).href// 图标路径
-// users.png：用户自己的头像
-const iconUrl2 = new URL('@/assets/images/users.png', import.meta.url).href// 图标路径
-
-// ==================== 一些默认值单独拎出来，后面重置界面时直接复用 ====================
-// 大白话：新建对话时，情绪卡和欢迎语时间都要回到最初状态，所以先存一个默认对象出来。
-const defaultEmotionState = {
-  primaryEmotion: '中性',
-  emotionScore: 50,
-  isNegative: false,
-  riskLevel: 0,
-  suggestion: '保持正常状态'
-}
+// ==================== DeepSeek API 配置 ====================
+const DEEPSEEK_KEY = import.meta.env.VITE_DEEPSEEK_KEY || ''
+const DEEPSEEK_URL = 'https://api.deepseek.com/v1/chat/completions'
+const SYSTEM_PROMPT = '你是一个温暖、专业的心理咨询AI助手，名叫 Kokoro。请用温柔、共情的语气回复，帮助用户梳理情绪、缓解压力。回复简洁有洞察力，控制在 200 字以内。像朋友一样聊天，但保持专业边界。'
 
 
-// ==================== 新建临时会话（还没发给后端，只是前端先搭一个空壳） ====================
+// ==================== 新建会话 ====================
 const createNewFrontendSession = () => {
-  // 创建一个新的会话对象
-  const newSession = {
-    sessionId: `temp_${Date.now()}`, // 用时间戳生成临时 ID
-    status: 'TEMP', // 标记为临时会话，等发了消息才变正式
-    sessionTitle: '新对话' // 暂时叫“新对话”
+  currentSession.value = {
+    sessionId: `local_${Date.now()}`,
+    sessionTitle: 'A Quiet Afternoon'
   }
-
-  currentSession.value = newSession // 把当前会话指向这个新壳子
-  // 大白话：点“新对话”时，不只是标题变一下，右边聊天区也要彻底回到初始欢迎界面。
   messages.value = []
   userMessage.value = ''
   isAiTyping.value = false
-  currentEmotion.value = { ...defaultEmotionState }
   initialMessageTime.value = formatMessageTime(new Date())
   resetChatScroll()
 }
 
-// ==================== 页面上的数据（响应式变量） ====================
-
-// 当前解析当前正在聊的会话对象（可能是临时的，也可能是从后端拖回来的历史会话）
+// ==================== 页面数据 ====================
 const currentSession = ref(null)
-// 左侧会话列表，放从后端拿回来的所有历史会话
-const sessionList = ref([])
-
 // 右边聊天区域里显示的聊天消息列表（每条都是一个对象：id / senderType / content）
 const messages = ref([])
 // 用户当前在输入框里打的文本
@@ -195,9 +119,35 @@ const chatBodyRef = ref(null)
 // 标记 AI 是否正在打字中，正在打字时输入框不能用
 const isAiTyping = ref(false)
 
-// ==================== 情绪花园：当前会话的情绪分析结果 ====================
-// 这个对象放后端对这次聊天做出的情绪评估
-const currentEmotion = ref({ ...defaultEmotionState })
+// ==================== 本地缓存：纯浏览器 localStorage ====================
+const CACHE_KEY = 'consultation_local'
+const MAX_CACHED_MESSAGES = 100 // 大白话：最多存 100 条，再多就裁掉旧的。
+
+const saveLocalCache = () => {
+  if (!currentSession.value || !currentSession.value.sessionId) return
+  const trimmed = messages.value.length > MAX_CACHED_MESSAGES
+    ? messages.value.slice(-MAX_CACHED_MESSAGES)
+    : messages.value
+  localStorage.setItem(CACHE_KEY, JSON.stringify({
+    session: currentSession.value,
+    messages: trimmed
+  }))
+}
+
+// 大白话：刷新后从浏览器缓存恢复上次对话。
+const restoreLocalCache = () => {
+  const raw = localStorage.getItem(CACHE_KEY)
+  if (!raw) return null
+  try { return JSON.parse(raw) } catch { return null }
+}
+
+const clearLocalCache = () => {
+  localStorage.removeItem(CACHE_KEY)
+}
+
+// 大白话：消息变化、切会话都自动存。
+watch(messages, () => { saveLocalCache() }, { deep: true })
+watch(currentSession, () => { saveLocalCache() }, { deep: true })
 
 // ==================== 把时间统一转成时:分，AI 和用户消息都走这里 ====================
 const formatMessageTime = (timeValue) => {
@@ -296,45 +246,6 @@ function handleInkResize() {
   initParticles()
 }
 
-// ==================== 根据会话 ID 请求后端拿情绪分析结果 ====================
-const loadSessionEmotion = (sessionId) => {
-  // 确保sessionId格式正确（后端存的 ID 可能带也可能不带 session_ 前缀）
-  const id = sessionId.toString().startsWith('session_') ? sessionId : `session_${sessionId}`
-  // 调接口拿情绪数据，把结果存到 currentEmotion 里
-  getSessionEmotion(id).then(res => {
-    currentEmotion.value = res
-
-  })
-}
-
-// ==================== 情绪强度等级（用来控制情绪花园里那几个小圆点亮几个） ====================
-const getIntensityClass = (score) => {
-  // 分数越高点亮的圆点越多
-  if (score >= 61) {
-    return 3 // 高分亮 3 个圆点
-  }
-  if (score >= 31) {
-    return 2 // 中等亮 2 个圆点
-  }
-  return 1 // 低分只亮 1 个
-}
-
-// ==================== 风险等级转成中文显示 ====================
-const getRiskText = (level) => {
-  switch (level) {
-    case 0:
-      return '正常'
-    case 1:
-      return '关注'
-    case 2:
-      return '预警'
-    case 3:
-      return '危机'
-    default:
-      return '正常'
-  }
-}
-
 // ==================== 回车键发送消息（Shift+Enter 换行） ====================
 const handleKeyDown = (e) => {
   // 如果按的是 Enter 且没按 Shift，就阻止默认换行行为（改成由发送按钮处理）
@@ -345,217 +256,103 @@ const handleKeyDown = (e) => {
 
 // ==================== 用户点击发送按钮 ====================
 const sendMessage = () => {
-  // 输入框为空就不发
   if (!userMessage.value.trim()) return
+  if (isAiTyping.value) return
 
-  // AI 还在回复中就不能再发了
-  if (isAiTyping.value) {
-    ElMessage.error('AI助手正在输入中，请稍后')
-    return
-  }
-
-  // 把输入的内容去掉首尾空格保存下来
   const message = userMessage.value.trim()
-  userMessage.value = '' // 清空输入框
+  userMessage.value = ''
 
-  // 如果当前会话是临时会话，说明这是用户第一次发消息，要先创建正式会话
-  if (currentSession.value.status === 'TEMP') {
-    startNewSession(message)
-  }else{
-    // 继续现有会话：先把用户消息加到聊天列表，再请求 AI 回复
-messages.value.push({
-  id: Date.now(),
-  senderType: 1, // 1 是用户
-  content: message,
-  createAt: new Date().toISOString()
-})
+  // 大白话：确保有个会话（刷新后可能没有）。
+  if (!currentSession.value) createNewFrontendSession()
 
-// 请求 AI 回复
-startAiResponse(currentSession.value.sessionId, message)
-  }
-}
-
-// ==================== 创建新会话（调后端接口，拿到正式 sessionId） ====================
-const startNewSession = (message) => {
-  // 构建会话参数（发给后端用的）
-  const sessionParams = {
-    initialMessage: message // 第一条消息就是用户刚输入的内容
-  }
-  // 如果当前标题还是“新对话”，就生成一个有日期的新标题
-  if (currentSession.value.sessionTitle === '新对话') {
-    sessionParams.sessionTitle = `宁渡AI助手 - ${new Date().toLocaleString()}`
-  } else {
-    // 如果历史会话记录，直接用原来的标题
-    sessionParams.sessionTitle = currentSession.value.sessionTitle
-  }
-  // 调用后端接口创建新会话
-  StartSession(sessionParams).then(res => {
-    console.log(res)
-    // 将后端返回的数据转为前端会话格式（合并到 currentSession 里）
-    const sessionData = {
-      sessionId: res.sessionId,
-      status: res.status,
-      sessionTitle: sessionParams.sessionTitle
-    }
-    // 如果当前是临时会话，直接更新现有对象（保留对象引用不变）
-    if (currentSession.value && currentSession.value.status === 'TEMP') {
-      // 更新为正式会话
-      Object.assign(currentSession.value, sessionData)
-    } else {
-      // 否则，创建一个新的会话
-      currentSession.value = sessionData
-    }
-
-    // 刷新左侧会话列表
-    getSessionPage()
-
-    // 把用户的第一条消息显示在聊天区域
-messages.value.push({
-  id: Date.now(),
-  senderType: 1, // 1 是用户
-  content: message,
-  createAt: new Date().toISOString()
-})
-    // 调用流式对话接口，让 AI 开始回复
-    startAiResponse(currentSession.value.sessionId , message)
-
+  // 把用户消息加到聊天列表
+  messages.value.push({
+    id: Date.now(),
+    senderType: 1,
+    content: message,
+    createAt: new Date().toISOString()
   })
+
+  // 请求 AI 回复
+  startAiResponse(message)
 }
-// ==================== 流式对话：请求 AI 回复（用 SSE 方式，AI 一个字一个字往外蹦） ====================
-const startAiResponse = (sessionId, userMessage) => {
-  // 防止重复发送
-  if (isAiTyping.value) {
-    ElMessage.error('AI助手正在输入中，请稍后')
+
+// ==================== AI 回复：DeepSeek API 直连 ====================
+const startAiResponse = async (userMessage) => {
+  if (isAiTyping.value) return
+  if (!DEEPSEEK_KEY) {
+    const aiMessage = {
+      id: `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      senderType: 2,
+      content: 'AI 配置缺失，请设置 VITE_DEEPSEEK_KEY 后再试。',
+      isError: true,
+      createAt: new Date().toISOString()
+    }
+    messages.value.push(aiMessage)
+    saveLocalCache()
     return
   }
-
-  // 标记 AI 开始打字，输入框变灰
   isAiTyping.value = true
 
-  // 先在聊天列表里插一条 AI 消息的空壳（content 是空的，等流式返回时一点一点往里填）
   const aiMessage = {
-    id: `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // 生成唯一 ID
-    senderType: 2, // 2 是 AI
-    content: '', // 一开始是空的，后面流式返回时拼进来
+    id: `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    senderType: 2,
+    content: '',
     createAt: new Date().toISOString()
   }
   messages.value.push(aiMessage)
 
-  // 调用流式接口（SSE：Server-Sent Events）
-  const ctrl = new AbortController() // 用来中止fetch请求
-  fetchEventSource('/api/psychological-chat/stream', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Token': localStorage.getItem('token'), // 从本地缓存拿登录 token
-      'Accept': 'text/event-stream' // 告诉后端我们要流式数据
-    },
-    body: JSON.stringify({
-      sessionId, // 当前会话 ID
-      userMessage // 用户输入的内容
-    }),
-    signal: ctrl.signal, // 允许我们主动中止这个请求
-    // 流连接打开时的回调
-    onopen: (response) => {
-      console.log(response)
-      if (response.headers.get('Content-Type') !== 'text/event-stream') {
-        ElMessage.error('服务器返回非流式数据')
-      }
-    },
-    // 每收到一段新数据的时候就调用这个回调
-    onmessage: (event) => {
-      const raw = event.data.trim() // 服务器发来的原始文本
-      if (!raw) return // 空数据就跳过
-      const eventName = event.event // event.event 是 SSE 规范里的事件名
-      // 拿到聊天列表最后一条 AI 消息
-      const aiMessage = messages.value[messages.value.length - 1]
+  // 拼消息上下文：把现有历史转成 DeepSeek 的 messages 格式
+  const deepseekMsgs = [{ role: 'system', content: SYSTEM_PROMPT }]
+  const historyMsgs = messages.value.slice(0, -1)
+  historyMsgs.forEach(m => {
+    deepseekMsgs.push({
+      role: m.senderType === 1 ? 'user' : 'assistant',
+      content: m.content
+    })
+  })
 
-      // 如果收到 done 事件，说明 AI 已经说完了
-      if (eventName === 'done') {
-        isAiTyping.value = false // 解除输入框锁定
-        ctrl.abort() // 中止 SSE 连接
-        // 开始情绪分析：根据这次聊天内容分析用户情绪
-        loadSessionEmotion(sessionId)
-        return
-      }
-      // 把服务器发来的文本解析成 JSON
-      const payload = JSON.parse(raw)
-      const ok = String(payload.code) === '200' // 是否成功
-      if (ok && payload.data && payload.data.content) {
-        // 成功：把这次返回的文字内容拼到 AI 消息后面
-        aiMessage.content += payload.data.content
-      } else if (!ok) {
-        // 错误回复的显示
-        handleError(payload.message || 'AI回复失败')
-      }
-    },
-    // 流连接发生错误时的回调
-    onerror: (err) => {
-      handleError(err || 'AI回复失败')
-      throw err // 把错误继续往外抛，让 fetchEventSource 内部处理重连
-    },
-    // 流连接关闭时的回调
-    onclose: () => {
-      // 开始情绪分析：不管正常结束还是异常关闭，都拿一下情绪数据
-      loadSessionEmotion(sessionId)
+  try {
+    const response = await fetch(DEEPSEEK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + DEEPSEEK_KEY
+      },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: deepseekMsgs,
+        stream: false
+      })
+    })
+
+    if (!response.ok) throw new Error('DeepSeek ' + response.status)
+
+    const data = await response.json()
+    if (data && data.choices && data.choices.length && data.choices[0].message) {
+      aiMessage.content = data.choices[0].message.content
+    } else {
+      aiMessage.content = '抱歉，未获取到回复。'
     }
-  })
+    // 大白话：AI 真正回复完要立刻再存一次，不然 localStorage 里可能还留着空白占位消息。
+    saveLocalCache()
+    isAiTyping.value = false
+  } catch (err) {
+    handleError(err)
+  }
 }
 
-// ==================== 错误处理函数（把 AI 回复改成错误提示） ====================
+// ==================== 错误处理 ====================
 const handleError = (error) => {
-  // 拿到聊天列表里最后一条 AI 消息，把它改成错误文案
   const aiMessage = messages.value[messages.value.length - 1]
-  if (aiMessage) {
-    aiMessage.content = 'AI回复失败，请重试'
-  }
-  isAiTyping.value = false // 解除输入框锁定
-  ElMessage.error('AI回复失败，请重试')
+  if (aiMessage) aiMessage.content = 'AI回复失败，请重试'
+  // 大白话：失败文案也要同步写进缓存，避免回到页面时看到空白气泡。
+  saveLocalCache()
+  isAiTyping.value = false
 }
 
 
-// ==================== 从后端拿会话列表（左侧显示） ====================
-const getSessionPage = () => {
-  getSessionList({
-    pageNum: 1, // 第 1 页
-    pageSize: 10 // 每页 10 条
-  }).then(res => {
-    console.log(res)
-    // 将后端返回的数据转为前端会话格式，塞到左侧列表里
-    sessionList.value = res.records
-
-  })
-}
-
-// ==================== 用户点击左侧某个历史会话 ====================
-const handleSessionClick = (session) => {
-  // 根据会话 ID 去后端拉这个会话里的所有聊天消息
-  getSessionDetail(session.id).then(res => {
-    messages.value = res // 替换右边聊天区的内容
-    resetChatScroll()
-  })
-  // 同时加载这个会话对应的情绪分析结果
-  loadSessionEmotion(session.id)
-  // 更新当前会话对象数据（把点击的历史会话变成当前正在聊的）
-  const sessionData = {
-    sessionId: "session_" + session.id,
-    status: 'ACTIVE', // 历史会话都是正式会话
-    sessionTitle: session.sessionTitle
-  }
-  currentSession.value = sessionData
-}
-
-// ==================== 删除某个历史会话 ====================
-const handleDeleteSession = (sessionId) => {
-  // 调用后端接口删除会话
-  deleteSession(sessionId).then(res => {
-    ElMessage.success('删除成功')
-    // 删除后重新刷新一下左侧会话列表
-    getSessionPage()
-  })
-}
-
-// ==================== 简单换行：把文本里的换行符 \n 转成 HTML 的 <br> ====================
+// ==================== 简单换行 ====================
 const formatMessageContent = (content) => {
   return content.replace(/\n/g, '<br>')
 }
@@ -564,7 +361,6 @@ const formatMessageContent = (content) => {
 onMounted(() => {
   // 大白话：进页面先把墨点背景动画启动起来。
   inkCanvas = document.getElementById('consultation-ink-canvas')
-
   if (inkCanvas) {
     inkCtx = inkCanvas.getContext('2d')
     initInkCanvas()
@@ -573,8 +369,18 @@ onMounted(() => {
     window.addEventListener('resize', handleInkResize)
   }
 
-  getSessionPage() // 先拉一下左边的历史会话列表
-  createNewFrontendSession() // 同时创建一个新的临时会话，让用户马上就能聊
+  // 大白话：刷新后从浏览器缓存恢复上次对话。
+  const cached = restoreLocalCache()
+  if (cached && cached.session && cached.session.sessionId) {
+    currentSession.value = cached.session
+    messages.value = Array.isArray(cached.messages) ? cached.messages : []
+    if (messages.value.length === 0) {
+      initialMessageTime.value = formatMessageTime(new Date())
+    }
+    resetChatScroll()
+  } else {
+    createNewFrontendSession()
+  }
 })
 
 // 大白话：离开页面时把动画和 resize 监听都停掉，免得一直占内存。
@@ -595,7 +401,7 @@ onBeforeUnmount(() => {
 .consultation-page {
   height: 100vh;
   display: grid;
-  grid-template-columns: 256px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   background: #f9f9f9;
   color: #1a1c1c;
   color: #1a1c1c;
@@ -781,6 +587,11 @@ onBeforeUnmount(() => {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+}
+
+/* 大白话：去掉左侧栏后，聊天区撑满全屏。 */
+.consultation-main--full {
+  max-width: none;
 }
 
 .consultation-main__art {

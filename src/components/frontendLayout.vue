@@ -97,9 +97,10 @@ onBeforeUnmount(() => {
 })
 
 const handleLogout = () => {
-  // 大白话：退出登录就是把本地 token 和用户信息清掉，再跳回首页。
+  // 大白话：退出登录就是把本地 token、用户信息、聊天记录全清掉，再跳回首页。
   localStorage.removeItem('token')
   localStorage.removeItem('userInfo')
+  localStorage.removeItem('consultation_local') // 大白话：退出登录取消聊天记录缓存。
   token.value = ''
   showUserMenu.value = false
   router.push('/')

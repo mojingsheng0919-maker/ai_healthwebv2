@@ -42,9 +42,7 @@ const handleClose = () => {
 }
 </script>
 <style lang="scss" scoped>
-.brand {
-    border-radius: 15px;
-}
+
 .sidebar-menu {
   height: 100%;
     .brand {
@@ -54,6 +52,8 @@ const handleClose = () => {
   justify-content: center;
   background-color: #f5f5f5;
   border-bottom: 1px solid #e4e7ed;
+  height: 70px;
+  border-radius: 15px;
   .info-card {
       .brand-name {
         font-size: 20px;
